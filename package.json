@@ -1,0 +1,26 @@
+{
+  "name": "vim-fighters",
+  "version": "0.0.0",
+  "description": "vim-fighters ============",
+  "main": "index.js",
+  "dependencies": {
+    "grunt": "~0.4.2",
+    "grunt-browserify": "~1.3.0",
+    "browserify": "~3.20.0",
+    "grunt-contrib-watch": "~0.5.3"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Queens-Hacks/vim-fighters"
+  },
+  "author": "Queen's Hacks",
+  "license": "BSD-2-Clause",
+  "bugs": {
+    "url": "https://github.com/Queens-Hacks/vim-fighters/issues"
+  },
+  "homepage": "https://github.com/Queens-Hacks/vim-fighters"
+}

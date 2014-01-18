@@ -1,4 +1,8 @@
 .DS_Store
-packages
-.project
-pubspec.lock
+
+# Ignore vim swapfiles
+.*.swp
+
+# Ignore node modules and out folder
+node_modules
+out
