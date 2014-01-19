@@ -1,10 +1,20 @@
 var _ = require('lodash');
-var XRegExp = require('xregexp').XRegExp;
 
-Buffer = function(options) {
-  _.extend(this, options);
-};
-var esc = function (c) {
+var GUTTER_WIDTH = 4;
+
+/*
+ * Helper Functions
+ */
+function gutter_pad(linum) {
+  var s = linum.toString(10);
+  var len = s.length;
+  for (var i=0; i<(GUTTER_WIDTH - 1 - len); i++)
+    s = s + '&nbsp;';
+
+  return s;
+}
+
+function escape_char(c) {
   if (c === ' ')
     return '&nbsp;';
   if (c === '<')
@@ -16,15 +26,13 @@ var esc = function (c) {
   return c;
 }
 
-var pad = function(num) {
-  var s = num.toString(10);
-  var len = s.length;
-  for (var i=0; i<(3 - len); i++) {
-    s = '&nbsp;' + s;
-  }
+/*
+ * Buffer Definition
+ */
 
-  return s;
-}
+Buffer = function(options) {
+  _.extend(this, options);
+};
 
 Buffer.prototype = {
   mode: 'normal',
@@ -34,13 +42,20 @@ Buffer.prototype = {
         'see <1>'],
   cursor: {col: 0, row: 0},
 
+  apparentCursor: function() {
+    if (this.cursor.col >= this.text[this.cursor.row].length)
+      return {col: this.text[this.cursor.row].length - 1, row: this.cursor.row};
+
+    return this.cursor;
+  },
+
   /*
    * Cursor movement functions.
    * These move the cursor to the previous, next, etc line.
    */
   cursorPrev: function() {
     if (this.cursor.col > 0)
-      this.cursor.col--;
+      this.cursor.col = this.apparentCursor().col - 1;
   },
 
   cursorNext: function() {
@@ -62,21 +77,27 @@ Buffer.prototype = {
       this.cursor.row++;
   },
 
+  /*
+   * Rendering functions
+   * Generates html-escaped text which can be printed
+   * in monospace font to display the vim buffer
+   */
+
   render: function(width) {
+    var cursor = this.apparentCursor();
     var out = '';
-    console.log(this.cursor);
 
     for (var line=0; line<this.text.length; line++) {
       var text = this.text[line];
 
       // Display the line number!
       var col = 4;
-      out += '<span class="linenum">' + pad(line + 1) + '&nbsp;</span>';
+      out += '<span class="linenum">' + gutter_pad(line + 1) + '&nbsp;</span>';
 
       for (var i=0; i<text.length; i++) {
         // Get and escape the character
         var c = text.charAt(i);
-        c = esc(c);
+        c = escape_char(c);
 
         // Wrap lines
         if (col === 80) {
@@ -84,14 +105,14 @@ Buffer.prototype = {
           col = 4;
         }
 
-        if (this.cursor.col === i && this.cursor.row === line)
+        if (cursor.col === i && cursor.row === line)
           out += '<span class="cursor">' + c + '</span>';
         else
           out += c;
         col++;
       }
 
-      if (this.cursor.row === line && this.cursor.col >= text.length) {
+      if (cursor.row === line && cursor.col >= text.length) {
         out += '<span class="cursor">&nbsp;</span>';
       }
 
