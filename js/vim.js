@@ -32,53 +32,45 @@ Buffer.prototype = {
         'It goes on & on my friends',
         'Some people started singing it not knowing what it was, and they will keep on singing it forever just because',
         'see <1>'],
-  cursor: [1,0],
+  cursor: {col: 0, row: 0},
 
   /*
    * Cursor movement functions.
    * These move the cursor to the previous, next, etc line.
    */
   cursorPrev: function() {
-    var col = this.cursor[1];
-    var row = this.cursor[0];
-
-    col--;
-    if (col < 0)
-      return;
-
-    this.cursor = [row, col];
+    if (this.cursor.col > 0)
+      this.cursor.col--;
   },
+
   cursorNext: function() {
-    var col = this.cursor[1];
-    var row = this.cursor[0];
+    var len = this.text[this.cursor.row].length;
+    if (this.mode === 'normal')
+      len--;
 
-    col++;
-    if (col > this.text[row].length)
-      return;
-
-    this.cursor = [row, col];
+    if (this.cursor.col < len)
+      this.cursor.col++;
   },
+
   cursorUp: function() {
-    this.cursor[0]--;
-    if (this.cursor[0] < 0)
-      this.cursor[0]++;
+    if (this.cursor.row > 0)
+      this.cursor.row--;
   },
+
   cursorDown: function() {
-    this.cursor[0]++;
-    if (this.cursor[0] >= this.text.length)
-      this.cursor[0]--;
+    if (this.cursor.row < this.text.length - 1)
+      this.cursor.row++;
   },
 
   render: function(width) {
     var out = '';
-    var col = 0;
-    var line = 1;
+    console.log(this.cursor);
 
     for (var line=0; line<this.text.length; line++) {
       var text = this.text[line];
 
       // Display the line number!
-      col = 4;
+      var col = 4;
       out += '<span class="linenum">' + pad(line + 1) + '&nbsp;</span>';
 
       for (var i=0; i<text.length; i++) {
@@ -92,14 +84,14 @@ Buffer.prototype = {
           col = 4;
         }
 
-        if (this.cursor[1] === i && this.cursor[0] === line)
+        if (this.cursor.col === i && this.cursor.row === line)
           out += '<span class="cursor">' + c + '</span>';
         else
           out += c;
         col++;
       }
 
-      if (this.cursor[0] === line && this.cursor[1] >= text.length) {
+      if (this.cursor.row === line && this.cursor.col >= text.length) {
         out += '<span class="cursor">&nbsp;</span>';
       }
 
