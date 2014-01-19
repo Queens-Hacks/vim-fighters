@@ -32,7 +32,42 @@ Buffer.prototype = {
         'It goes on & on my friends',
         'Some people started singing it not knowing what it was, and they will keep on singing it forever just because',
         'see <1>'],
-  cursor: [3,80],
+  cursor: [1,0],
+
+  /*
+   * Cursor movement functions.
+   * These move the cursor to the previous, next, etc line.
+   */
+  cursorPrev: function() {
+    var col = this.cursor[1];
+    var row = this.cursor[0];
+
+    col--;
+    if (col < 0)
+      return;
+
+    this.cursor = [row, col];
+  },
+  cursorNext: function() {
+    var col = this.cursor[1];
+    var row = this.cursor[0];
+
+    col++;
+    if (col > this.text[row].length)
+      return;
+
+    this.cursor = [row, col];
+  },
+  cursorUp: function() {
+    this.cursor[0]--;
+    if (this.cursor[0] < 0)
+      this.cursor[0]++;
+  },
+  cursorDown: function() {
+    this.cursor[0]++;
+    if (this.cursor[0] >= this.text.length)
+      this.cursor[0]--;
+  },
 
   render: function(width) {
     var out = '';
@@ -76,10 +111,6 @@ Buffer.prototype = {
   }
 
 };
-var b = new Buffer;
-
-document.body.innerHTML = b.render(80);
-console.log(b.render(80));
 
 Mapping = function(re, action, modifiers) {
   this.re = re;
@@ -96,6 +127,8 @@ Vim.prototype = {
   mode: 'normal',
   nmode_map: [],
   imode_map: [],
+
+  buffer: new Buffer,
 
   command_log: '',
 
@@ -123,8 +156,10 @@ Vim.prototype = {
       var match = this.command_log.match(map[i].re);
 
       if (match) {
-        console.log(match)
+        map[i].action.call(this.buffer, match);
         this.command_log = '';
+
+        this.render();
         return;
       }
     }
@@ -143,15 +178,29 @@ Vim.prototype = {
 
       self.command_check();
     }
+  },
+
+  render: function() {
+    document.body.innerHTML = this.buffer.render();
   }
 };
 
 var vim = new Vim;
 
-vim.nmode_remap('([0-9]*)h$', function() {});
-vim.nmode_remap('([0-9]*)j$', function() {});
-vim.nmode_remap('([0-9]*)k$', function() {});
-vim.nmode_remap('([0-9]*)l$', function() {});
+vim.nmode_remap('([0-9]*)h$', function(match) {
+  this.cursorPrev();
+});
+vim.nmode_remap('([0-9]*)j$', function(match) {
+  this.cursorDown();
+});
+vim.nmode_remap('([0-9]*)k$', function(match) {
+  this.cursorUp();
+});
+vim.nmode_remap('([0-9]*)l$', function(match) {
+  this.cursorNext();
+});
+
+vim.render();
 
 document.addEventListener('keypress', vim.keypress());
 
