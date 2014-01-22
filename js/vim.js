@@ -9,7 +9,7 @@ function gutter_pad(linum) {
   var s = linum.toString(10);
   var len = s.length;
   for (var i=0; i<(GUTTER_WIDTH - 1 - len); i++)
-    s = s + '&nbsp;';
+    s = '&nbsp;' + s;
 
   return s;
 }
@@ -26,6 +26,14 @@ function escape_char(c) {
   return c;
 }
 
+function escape_str(s) {
+  var o = '';
+  for (var i=0; i<s.length; i++) {
+    o += escape_char(s.charAt(i));
+  }
+  return o;
+}
+
 /*
  * Buffer Definition
  */
@@ -35,7 +43,6 @@ Buffer = function(options) {
 };
 
 Buffer.prototype = {
-  mode: 'normal',
   text: ['This is the song that never ends...',
         'It goes on & on my friends',
         'Some people started singing it not knowing what it was, and they will keep on singing it forever just because',
@@ -100,7 +107,7 @@ Buffer.prototype = {
         c = escape_char(c);
 
         // Wrap lines
-        if (col === 80) {
+        if (col === width) {
           out += '<br /><span class="linenum">&nbsp;&nbsp;&nbsp;&nbsp;</span>';
           col = 4;
         }
@@ -131,19 +138,25 @@ Mapping = function(re, action, modifiers) {
   this.modifiers = modifiers;
 };
 
-Vim = function(cwidth, cheight) {
+Vim = function(cwidth, cheight, target) {
   this.cwidth = cwidth;
   this.cheight = cheight;
+
+  if (!target)
+    target = document.body;
+  this.target = target;
 };
 
 Vim.prototype = {
   mode: 'normal',
   nmode_map: [],
   imode_map: [],
+  exmode_map: [],
 
   buffer: new Buffer,
 
   command_log: '',
+  flash: '',
 
   nmode_remap: function(re, action, modifiers) {
     modifiers = modifiers || [];
@@ -163,19 +176,42 @@ Vim.prototype = {
     this.imode_map.unshift(new Mapping(re, action, modifiers));
   },
 
+  exmode_remap: function(re, action) {
+    if (typeof re === 'string')
+      re = new RegExp(re);
+
+    this.exmode_map.unshift(new Mapping(re, function(match) {
+      // Wrap around the call - we always change back to normal mode
+      this.mode = 'normal';
+      action.call(this, match);
+    }));
+  },
+
   command_check: function() {
-    var map = (this.mode === 'normal') ? this.nmode_map : this.imode_map;
+    var map;
+    switch (this.mode) {
+      case 'normal':
+        map = this.nmode_map; break;
+      case 'insert':
+        map = this.imode_map; break;
+      case 'ex':
+        map = this.exmode_map; break;
+    }
+
     for (var i=0; i<map.length; i++) {
       var match = this.command_log.match(map[i].re);
 
       if (match) {
-        map[i].action.call(this.buffer, match);
+        map[i].action.call(this, match);
         this.command_log = '';
 
         this.render();
         return;
       }
     }
+
+    if (this.mode === 'ex')
+      this.render();
   },
 
   keypress: function() {
@@ -184,36 +220,73 @@ Vim.prototype = {
     return function(e) {
       var chr = String.fromCharCode(e.charCode);
 
-      if (chr.length !== 1)
-        console.log('wat!');
-
       self.command_log = self.command_log + chr;
 
       self.command_check();
-    }
+    };
+  },
+
+  keydown: function() {
+    var self = this;
+
+    return function(e) {
+      if (e.keyCode === 8 || e.keyCode === 46) {
+        console.log('DELETE');
+        e.preventDefault();
+      } else if (e.keyCode === 27) {
+        /* <ESC> - ESCAPE */
+        if (self.mode === 'ex') {
+          self.mode = 'normal';
+          self.command_log = '';
+        }
+        console.log('ESC');
+        e.preventDefault();
+      }
+    };
   },
 
   render: function() {
-    document.body.innerHTML = this.buffer.render();
+    var rendered = this.buffer.render(80);
+
+    // When in ex-mode, render the command input line
+    if (this.mode === 'ex')
+      rendered += ':' + escape_str(this.command_log);
+    else if (this.flash) {
+      rendered += escape_str(this.flash);
+      this.flash = '';
+    } else
+      rendered += escape_str(' -- ' + this.mode.toUpperCase() + ' -- ');
+
+    this.target.innerHTML = rendered;
   }
 };
 
 var vim = new Vim;
 
+/* NORMAL MODE COMMANDS */
 vim.nmode_remap('([0-9]*)h$', function(match) {
-  this.cursorPrev();
+  this.buffer.cursorPrev();
 });
 vim.nmode_remap('([0-9]*)j$', function(match) {
-  this.cursorDown();
+  this.buffer.cursorDown();
 });
 vim.nmode_remap('([0-9]*)k$', function(match) {
-  this.cursorUp();
+  this.buffer.cursorUp();
 });
 vim.nmode_remap('([0-9]*)l$', function(match) {
-  this.cursorNext();
+  this.buffer.cursorNext();
+});
+vim.nmode_remap(':$', function(match) {
+  this.mode = 'ex';
+});
+
+/* EX MODE COMMANDS */
+vim.exmode_remap('\r$', function(match) {
+  this.flash = 'ERROR: Unrecognised command (:' + this.command_log.slice(0, -1) + ') - type :help for help';
+  console.log('ERROR: Unrecognised command');
 });
 
 vim.render();
 
 document.addEventListener('keypress', vim.keypress());
-
+document.addEventListener('keydown', vim.keydown());
