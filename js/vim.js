@@ -38,8 +38,9 @@ function escape_str(s) {
  * Buffer Definition
  */
 
-Buffer = function(options) {
+var Buffer = function(vim, options) {
   _.extend(this, options);
+  this.vim = vim;
 };
 
 Buffer.prototype = {
@@ -50,8 +51,14 @@ Buffer.prototype = {
   cursor: {col: 0, row: 0},
 
   apparentCursor: function() {
-    if (this.cursor.col >= this.text[this.cursor.row].length)
-      return {col: this.text[this.cursor.row].length - 1, row: this.cursor.row};
+    if (this.cursor.col >= this.text[this.cursor.row].length) {
+      if (this.vim.mode === 'insert')
+        return {col: this.text[this.cursor.row].length, row: this.cursor.row};
+
+      var len = this.text[this.cursor.row].length - 1;
+      if (len < 0) len = 0;
+      return {col: len, row: this.cursor.row};
+    }
 
     return this.cursor;
   },
@@ -82,6 +89,44 @@ Buffer.prototype = {
   cursorDown: function() {
     if (this.cursor.row < this.text.length - 1)
       this.cursor.row++;
+  },
+
+  /*
+   * Character Insertion function.
+   * This inserts a character (or characters) at the current cursor position
+   */
+  insertChar: function(c, point) {
+    cursor = point || this.apparentCursor();
+    var row = this.text[cursor.row];
+    var before = row.substring(0, cursor.col);
+    var after = row.substring(cursor.col);
+
+    if (c === '\r' || c === '\n') {
+      this.text[cursor.row] = before;
+      this.text.splice(cursor.row + 1, 0, after);
+
+      if (!point) {
+        this.cursor.col = 0;
+        this.cursor.row++;
+      }
+    } else {
+      this.text[cursor.row] = before + c + after;
+
+      if (!point)
+        this.cursor.col++;
+    }
+  },
+
+  /*
+   * Character deletion function
+   */
+  deleteChar: function(point) {
+    cursor = point || this.apparentCursor();
+    var row = this.text[cursor.row];
+    var before = row.substring(0, cursor.col);
+    var after = row.substring(cursor.col + 1);
+
+    this.text[cursor.row] = before + after;
   },
 
   /*
@@ -119,7 +164,8 @@ Buffer.prototype = {
         col++;
       }
 
-      if (cursor.row === line && cursor.col >= text.length) {
+      if (cursor.row === line && (cursor.col >= text.length ||
+          this.text[this.cursor.row].length === 0)) {
         out += '<span class="cursor">&nbsp;</span>';
       }
 
@@ -132,28 +178,29 @@ Buffer.prototype = {
 
 };
 
-Mapping = function(re, action, modifiers) {
+var Mapping = function(re, action, modifiers) {
   this.re = re;
   this.action = action;
   this.modifiers = modifiers;
 };
 
-Vim = function(cwidth, cheight, target) {
+var Vim = function(cwidth, cheight, target) {
   this.cwidth = cwidth;
   this.cheight = cheight;
 
   if (!target)
     target = document.body;
   this.target = target;
+
+  this.buffer = new Buffer(this);
 };
 
 Vim.prototype = {
   mode: 'normal',
   nmode_map: [],
-  imode_map: [],
   exmode_map: [],
 
-  buffer: new Buffer,
+  buffer: null,
 
   command_log: '',
   flash: '',
@@ -165,15 +212,6 @@ Vim.prototype = {
       re = new RegExp(re);
 
     this.nmode_map.unshift(new Mapping(re, action, modifiers));
-  },
-
-  imode_remap: function(re, action, modifiers) {
-    modifiers = modifiers || [];
-
-    if (typeof re === 'string')
-      re = new RegExp(re);
-
-    this.imode_map.unshift(new Mapping(re, action, modifiers));
   },
 
   exmode_remap: function(re, action) {
@@ -192,10 +230,13 @@ Vim.prototype = {
     switch (this.mode) {
       case 'normal':
         map = this.nmode_map; break;
-      case 'insert':
-        map = this.imode_map; break;
       case 'ex':
         map = this.exmode_map; break;
+      case 'insert':
+        this.buffer.insertChar(this.command_log);
+        this.command_log = '';
+        this.render();
+        return;
     }
 
     for (var i=0; i<map.length; i++) {
@@ -230,18 +271,49 @@ Vim.prototype = {
     var self = this;
 
     return function(e) {
-      if (e.keyCode === 8 || e.keyCode === 46) {
-        console.log('DELETE');
+      if (e.keyCode === 8) {
+        /* backspace */
+        if (self.mode === 'ex') {
+          if (self.command_log.length > 0) {
+            // Ex-mode, delete the last character in the command line
+            self.command_log = self.command_log.substring(0, self.command_log.length - 1);
+          } else {
+            // Already empty, exit Ex-mode
+            self.mode = 'normal';
+          }
+        } else if (self.mode === 'normal') {
+          // HACK: This is equivalent (approximately) to typing 'h'
+          self.command_log += 'h';
+          self.command_check();
+        }
+
+        e.preventDefault();
+      } else if (e.keyCode === 46) {
+        /* delete */
+        if (self.mode === 'normal') {
+          // HACK: This is equivalent (approximately) to typing 'x'
+          self.command_log = 'x';
+          self.command_check();
+        }
+
         e.preventDefault();
       } else if (e.keyCode === 27) {
         /* <ESC> - ESCAPE */
         if (self.mode === 'ex') {
+          // Leave ex-mode
+          self.mode = 'normal';
+          self.command_log = '';
+        } else if (self.mode === 'insert') {
+          // TODO: Make this smarter
+          self.buffer.cursorPrev();
           self.mode = 'normal';
           self.command_log = '';
         }
-        console.log('ESC');
+
         e.preventDefault();
       }
+
+      self.render();
     };
   },
 
@@ -276,8 +348,15 @@ vim.nmode_remap('([0-9]*)k$', function(match) {
 vim.nmode_remap('([0-9]*)l$', function(match) {
   this.buffer.cursorNext();
 });
+vim.nmode_remap('x$', function(match) {
+  this.buffer.deleteChar();
+});
 vim.nmode_remap(':$', function(match) {
   this.mode = 'ex';
+});
+vim.nmode_remap('i$', function(match) {
+  this.buffer.cursor = this.buffer.apparentCursor();
+  this.mode = 'insert';
 });
 
 /* EX MODE COMMANDS */
