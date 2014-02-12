@@ -200,8 +200,6 @@ Vim.prototype = {
   nmode_map: [],
   exmode_map: [],
 
-  buffer: null,
-
   command_log: '',
   flash: '',
 
@@ -285,6 +283,9 @@ Vim.prototype = {
           // HACK: This is equivalent (approximately) to typing 'h'
           self.command_log += 'h';
           self.command_check();
+        } else if (self.mode === 'insert') {
+          self.buffer.deleteChar();
+          self.buffer.cursor.col--;
         }
 
         e.preventDefault();
