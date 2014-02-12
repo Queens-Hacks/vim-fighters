@@ -284,8 +284,8 @@ Vim.prototype = {
           self.command_log += 'h';
           self.command_check();
         } else if (self.mode === 'insert') {
-          self.buffer.deleteChar();
           self.buffer.cursor.col--;
+          self.buffer.deleteChar();
         }
 
         e.preventDefault();
